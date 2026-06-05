@@ -332,11 +332,16 @@
 
       pose.onResults(onResults);
 
-      const camera = new Camera(video, {
-        onFrame: async () => { await pose.send({ image: video }); },
-        width: 640,
-        height: 480
-      });
+     const stream = await navigator.mediaDevices.getUserMedia({
+  video: { facingMode: { ideal: 'environment' }, width: 640, height: 480 }
+});
+video.srcObject = stream;
+await new Promise(resolve => video.onloadedmetadata = resolve);
+await video.play();
+pose.onResults(onResults);
+const camera = { send: async () => { await pose.send({ image: video }); } };
+const loop = () => { camera.send(); requestAnimationFrame(loop); };
+loop();
 
       await camera.start();
       startBtn.style.display = 'none';
