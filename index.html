@@ -400,8 +400,13 @@ startBtn.addEventListener('click',async()=>{
   try{
     await startStream(facingMode);
     statusEl.textContent='Cargando modelo...';
-    await tf.ready();
-    detector=await poseDetection.createDetector(
+   await tf.ready();
+
+await tf.setBackend('webgl');
+
+console.log("Backend:", tf.getBackend());
+
+detector = await poseDetection.createDetector(
       poseDetection.SupportedModels.BlazePose,
       {runtime:'tfjs', modelType:'full', enableSmoothing:true}
     );
