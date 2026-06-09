@@ -360,7 +360,9 @@ async function detectionLoop() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   try {
     const poses = await detector.estimatePoses(video, { flipHorizontal: false });
+    console.log("POSES:", poses.length);
     if (poses && poses.length > 0) {
+      console.log("KEYPOINTS:", poses[0].keypoints);
       const kps=poses[0].keypoints, H=canvas.height;
       let detected=0;
       if(drawFoot(getKp(kps,'left_heel'),getKp(kps,'left_foot_index'),getKp(kps,'left_ankle'),getKp(kps,'left_knee'),'left',false,H)) detected++;
