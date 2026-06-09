@@ -289,6 +289,7 @@ function buildShoeCanvas(shoe, view, size) {
 // ── Dibujado en canvas principal ──
 function drawShoe(cx, cy, angle, width, shoe, flip, tilt) {
   console.log("DRAW SHOE", cx, cy);
+  
   if (width < 10) return;
   const view = getView(tilt);
   const size = Math.max(Math.round(width * 0.85), 20);
@@ -297,6 +298,10 @@ function drawShoe(cx, cy, angle, width, shoe, flip, tilt) {
 
   ctx.save();
   ctx.translate(cx, cy);
+   // PRUEBA: dibujar un cuadrado rojo
+  ctx.fillStyle = "red";
+  ctx.fillRect(-30, -30, 60, 60);
+  
   if (view === 'top') {
     ctx.rotate(angle);
     if (flip) ctx.scale(-1, 1);
