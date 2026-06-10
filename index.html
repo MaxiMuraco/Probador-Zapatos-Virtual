@@ -56,7 +56,7 @@ function drawShoe(x,y,angle,size,color,flip){
   ctx.rotate(angle);
 
   if(flip){
-  ctx.scale(-1,1);
+  ctx.scale(-1,-1);
 
   ctx.fillStyle="red";
 }else{
@@ -142,7 +142,7 @@ function drawShoe(x,y,angle,size,color,flip){
 
   ctx.beginPath();
   ctx.arc(
-    w*0.28,
+    dir * w * 0.28,
     h*0.02,
     h*0.18,
     -1,
