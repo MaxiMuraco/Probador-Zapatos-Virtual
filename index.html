@@ -2,415 +2,77 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Probador Virtual de Zapatos</title>
+  <title>Prototipo Try-On Zapatos</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; }
-    h1 { text-align: center; font-size: 20px; font-weight: 500; padding: 20px 0 4px; }
-    #subtitle { text-align: center; font-size: 13px; color: #666; margin-bottom: 16px; }
-    #viewfinder {
-      position: relative; width: 100%; max-width: 600px;
-      margin: 0 auto; border-radius: 12px; overflow: hidden;
-      background: #000; aspect-ratio: 4/3;
-    }
-    #webcam { width: 100%; height: 100%; object-fit: cover; display: block; }
-    #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-    #flipBtn {
-      position: absolute; top: 12px; right: 12px; z-index: 10;
-      background: rgba(0,0,0,0.55); color: #fff; border: none;
-      border-radius: 10px; padding: 10px 14px; font-size: 22px;
-      cursor: pointer; backdrop-filter: blur(4px);
-    }
-    #status { text-align: center; font-size: 13px; color: #555; margin: 12px 0 16px; min-height: 18px; }
-    #startBtn {
-      display: block; margin: 0 auto 20px; padding: 14px 40px;
-      border: none; border-radius: 12px; background: #378ADD; color: #fff;
-      cursor: pointer; font-size: 16px; font-weight: 500;
-      box-shadow: 0 2px 8px rgba(55,138,221,0.35);
-      transition: background 0.15s, transform 0.1s;
-    }
-    #startBtn:active { transform: scale(0.97); }
-    #startBtn:disabled { opacity: 0.5; cursor: not-allowed; }
-    #shoes {
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 10px; margin: 0 auto 18px; padding: 0 16px; max-width: 600px;
-    }
-    .shoe-btn {
-      display: flex; flex-direction: column; align-items: center; gap: 6px;
-      padding: 14px 10px; border: 2px solid #ddd; border-radius: 14px;
-      background: #fff; cursor: pointer; font-size: 13px; font-weight: 500;
-      color: #444; transition: all 0.15s; -webkit-tap-highlight-color: transparent;
-    }
-    .shoe-btn .emoji { font-size: 28px; line-height: 1; }
-    .shoe-btn:active { transform: scale(0.96); }
-    .shoe-btn.active {
-      border-color: #378ADD; background: #E6F1FB; color: #0C447C;
-      box-shadow: 0 0 0 3px rgba(55,138,221,0.15);
-    }
-    #controls {
-      display: flex; align-items: center; gap: 12px;
-      justify-content: center; margin-bottom: 12px; padding: 0 16px;
-    }
-    #controls label { font-size: 13px; color: #666; white-space: nowrap; }
-    #scaleSlider { flex: 1; max-width: 160px; }
-    #scaleVal { font-size: 13px; font-weight: 600; min-width: 40px; }
-    #tip { text-align: center; font-size: 12px; color: #aaa; padding: 0 16px 28px; max-width: 500px; margin: 0 auto; }
-    .wrapper { max-width: 640px; margin: 0 auto; padding: 0 16px; }
+    body { margin: 0; overflow: hidden; }
+    video, canvas { position: absolute; top: 0; left: 0; }
+    canvas { pointer-events: none; }
   </style>
 </head>
 <body>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
 
-<h1>Probador Virtual de Zapatos</h1>
-<p id="subtitle">Mostrá tus pies a la cámara y probate el calzado</p>
+  <script type="module">
+    import { Pose } from "https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js";
+    import { Camera } from "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js";
 
-<div class="wrapper">
-  <div id="viewfinder">
-    <video id="webcam" autoplay playsinline muted></video>
-    <canvas id="overlay"></canvas>
-    <button id="flipBtn" style="display:none">🔄</button>
-  </div>
-  <p id="status">Presioná el botón para empezar</p>
-  <button id="startBtn">Activar cámara</button>
-  <div id="shoes">
-    <button class="shoe-btn active" data-shoe="sneaker"><span class="emoji">👟</span>Zapatilla</button>
-    <button class="shoe-btn" data-shoe="boot"><span class="emoji">🥾</span>Bota</button>
-    <button class="shoe-btn" data-shoe="loafer"><span class="emoji">👞</span>Mocasín</button>
-    <button class="shoe-btn" data-shoe="heel"><span class="emoji">👠</span>Taco</button>
-  </div>
-  <div id="controls">
-    <label>Tamaño</label>
-    <input type="range" id="scaleSlider" min="50" max="200" value="100" step="1">
-    <span id="scaleVal">100%</span>
-  </div>
-  <p id="tip">Usá 🔄 para cambiar entre cámara frontal y trasera.</p>
-</div>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js"></script>
-
-<script>
-// ── DOM ──
-const video       = document.getElementById('webcam');
-const canvas      = document.getElementById('overlay');
-const ctx         = canvas.getContext('2d');
-const statusEl    = document.getElementById('status');
-const startBtn    = document.getElementById('startBtn');
-const flipBtn     = document.getElementById('flipBtn');
-const scaleSlider = document.getElementById('scaleSlider');
-const scaleVal    = document.getElementById('scaleVal');
-
-// ── Estado ──
-let currentShoe   = 'sneaker';
-let userScale     = 1.0;
-let cameraStarted = false;
-let facingMode    = 'environment';
-let currentStream = null;
-let detector      = null;
-let running       = false;
-
-// ── Colores ──
-const COLORS = {
-  sneaker: { body:'#378ADD', sole:'#0C447C', lace:'#ffffff', tongue:'#5aaee8', label:'Zapatilla' },
-  boot:    { body:'#5F5E5A', sole:'#2C2C2A', lace:'#B4B2A9', tongue:'#4a4a47', label:'Bota'     },
-  loafer:  { body:'#854F0B', sole:'#412402', lace:'#EF9F27', tongue:'#a8650e', label:'Mocasín'  },
-  heel:    { body:'#D4537E', sole:'#4B1528', lace:'#F4C0D1', tongue:'#e8779b', label:'Taco'     },
-};
-
-// ── UI ──
-document.querySelectorAll('.shoe-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.shoe-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentShoe = btn.dataset.shoe;
-    shoeCache = {}; // limpiar cache al cambiar modelo
-  });
-});
-scaleSlider.addEventListener('input', () => {
-  userScale = parseInt(scaleSlider.value) / 100;
-  scaleVal.textContent = scaleSlider.value + '%';
-});
-
-// ── Suavizado ──
-const smoothed = {
-  left:  { cx:null, cy:null, angle:null, w:null, tilt:null },
-  right: { cx:null, cy:null, angle:null, w:null, tilt:null },
-};
-const LERP = 0.28;
-function lerp(a,b,t){ return a+(b-a)*t; }
-function lerpAngle(a,b,t){
-  let d=b-a; while(d>Math.PI) d-=2*Math.PI; while(d<-Math.PI) d+=2*Math.PI; return a+d*t;
-}
-function smoothFoot(side,cx,cy,angle,w,tilt){
-  const s=smoothed[side];
-  if(s.cx===null){s.cx=cx;s.cy=cy;s.angle=angle;s.w=w;s.tilt=tilt;}
-  else{s.cx=lerp(s.cx,cx,LERP);s.cy=lerp(s.cy,cy,LERP);s.angle=lerpAngle(s.angle,angle,LERP);s.w=lerp(s.w,w,LERP);s.tilt=lerp(s.tilt,tilt,LERP);}
-  return s;
-}
-
-// ── Vista según tilt ──
-function getView(tilt) {
-  if (tilt < 0.35) return 'top';
-  if (tilt < 0.65) return 'front';
-  return 'side';
-}
-
-// ── Cache de canvas offscreen ──
-let shoeCache = {};
-
-function getShoeCanvas(shoe, view, size) {
-  const key = `${shoe}_${view}_${size}`;
-  if (shoeCache[key]) return shoeCache[key];
-  const oc = buildShoeCanvas(shoe, view, size);
-  shoeCache[key] = oc;
-  return oc;
-}
-
-function buildShoeCanvas(shoe, view, size) {
-  const c = COLORS[shoe];
-  const oc = document.createElement('canvas');
-  if (view === 'top')   { oc.width = Math.round(size*2.2); oc.height = Math.round(size*0.85); }
-  if (view === 'front') { oc.width = Math.round(size*1.4); oc.height = Math.round(size*1.9);  }
-  if (view === 'side')  { oc.width = Math.round(size*2.8); oc.height = Math.round(size*1.6);  }
-  if (!oc.width || !oc.height || oc.width < 4 || oc.height < 4) return oc;
-  const x = oc.getContext('2d');
-
-  if (shoe === 'sneaker') {
-    if (view === 'top') {
-      x.translate(oc.width/2, oc.height/2);
-      const w=size, h=size*0.38;
-      x.beginPath(); x.ellipse(0,h*0.5,w*1.05,h*0.6,0,0,Math.PI*2); x.fillStyle='#0a3566'; x.fill();
-      x.beginPath(); x.ellipse(0,h*0.3,w*1.02,h*0.5,0,0,Math.PI*2); x.fillStyle='#1a4f8a'; x.fill();
-      x.beginPath(); x.ellipse(0,0,w,h,0,0,Math.PI*2); x.fillStyle=c.body; x.fill();
-      x.beginPath(); x.moveTo(-w,0); x.bezierCurveTo(-w,h*0.6,-w*0.5,h*0.8,-w*0.2,h*0.7); x.bezierCurveTo(-w*0.6,h*0.5,-w*0.9,h*0.1,-w,0); x.fillStyle='rgba(0,0,0,0.2)'; x.fill();
-      x.beginPath(); x.moveTo(w,0); x.bezierCurveTo(w,h*0.6,w*0.5,h*0.8,w*0.2,h*0.7); x.bezierCurveTo(w*0.6,h*0.5,w*0.9,h*0.1,w,0); x.fillStyle='rgba(255,255,255,0.12)'; x.fill();
-      x.beginPath(); x.ellipse(-w*0.28,-h*0.55,w*0.16,h*0.28,0,0,Math.PI*2); x.fillStyle=c.tongue; x.fill();
-      for(let i=-2;i<=2;i++){x.beginPath();x.moveTo(i*w*0.13,h*0.05);x.lineTo(i*w*0.13+w*0.06,-h*0.32);x.strokeStyle=c.lace;x.lineWidth=w*0.04;x.stroke();}
-
-    } else if (view === 'front') {
-      x.translate(oc.width/2, oc.height*0.62);
-      const w=size*0.62, h=size*1.1;
-      x.beginPath(); x.moveTo(-w*0.95,h*0.28); x.bezierCurveTo(-w,h*0.55,w,h*0.55,w*0.95,h*0.28); x.fillStyle='#0a3566'; x.fill();
-      x.beginPath(); x.moveTo(-w*0.95,h*0.12); x.bezierCurveTo(-w,-h*0.2,-w*0.6,-h*0.82,0,-h*0.88); x.bezierCurveTo(w*0.6,-h*0.82,w,-h*0.2,w*0.95,h*0.12); x.closePath(); x.fillStyle=c.body; x.fill();
-      x.beginPath(); x.moveTo(w*0.36,-h*0.72); x.bezierCurveTo(w,-h*0.14,w*0.95,h*0.12,w*0.72,h*0.08); x.bezierCurveTo(w*0.72,-h*0.08,w*0.52,-h*0.62,w*0.36,-h*0.72); x.fillStyle='rgba(0,0,0,0.2)'; x.fill();
-      x.beginPath(); x.moveTo(-w*0.36,-h*0.72); x.bezierCurveTo(-w,-h*0.14,-w*0.95,h*0.12,-w*0.72,h*0.08); x.bezierCurveTo(-w*0.72,-h*0.08,-w*0.52,-h*0.62,-w*0.36,-h*0.72); x.fillStyle='rgba(255,255,255,0.1)'; x.fill();
-      x.beginPath(); x.moveTo(-w*0.24,-h*0.18); x.bezierCurveTo(-w*0.28,-h*0.78,w*0.28,-h*0.78,w*0.24,-h*0.18); x.fillStyle=c.tongue; x.fill();
-      for(let i=0;i<4;i++){x.beginPath();x.moveTo(-w*0.44,-h*0.06-i*h*0.14);x.lineTo(w*0.44,-h*0.06-i*h*0.14);x.strokeStyle=c.lace;x.lineWidth=w*0.07;x.lineCap='round';x.stroke();}
-
-    } else { // side
-      x.translate(oc.width/2, oc.height*0.58);
-      const w=size*1.3, h=size*0.9;
-      x.beginPath(); x.moveTo(-w*0.5,h*0.42); x.bezierCurveTo(-w*0.56,h*0.62,-w*0.3,h*0.72,w*0.08,h*0.7); x.bezierCurveTo(w*0.38,h*0.68,w*0.56,h*0.56,w*0.52,h*0.4); x.lineTo(w*0.5,h*0.3); x.bezierCurveTo(w*0.3,h*0.52,w*0.08,h*0.56,-w*0.08,h*0.54); x.bezierCurveTo(-w*0.34,h*0.52,-w*0.5,h*0.42,-w*0.5,h*0.3); x.closePath(); x.fillStyle='#0a3566'; x.fill();
-      x.beginPath(); x.moveTo(-w*0.5,h*0.28); x.bezierCurveTo(-w*0.54,h*0.46,-w*0.3,h*0.54,w*0.08,h*0.52); x.bezierCurveTo(w*0.36,h*0.5,w*0.52,h*0.4,w*0.5,h*0.26); x.bezierCurveTo(w*0.3,h*0.42,w*0.08,h*0.46,-w*0.08,h*0.44); x.bezierCurveTo(-w*0.33,h*0.42,-w*0.48,h*0.32,-w*0.5,h*0.28); x.fillStyle='#1a4f8a'; x.fill();
-      x.beginPath(); x.moveTo(-w*0.5,h*0.26); x.bezierCurveTo(-w*0.54,-h*0.06,-w*0.38,-h*0.48,-w*0.08,-h*0.6); x.bezierCurveTo(w*0.08,-h*0.68,w*0.22,-h*0.6,w*0.38,-h*0.38); x.bezierCurveTo(w*0.56,-h*0.1,w*0.52,h*0.2,w*0.5,h*0.26); x.bezierCurveTo(w*0.3,h*0.44,w*0.08,h*0.48,-w*0.08,h*0.46); x.bezierCurveTo(-w*0.34,h*0.44,-w*0.5,h*0.32,-w*0.5,h*0.26); x.fillStyle=c.body; x.fill();
-      x.beginPath(); x.moveTo(-w*0.5,h*0.26); x.bezierCurveTo(-w*0.54,-h*0.06,-w*0.42,-h*0.36,-w*0.26,-h*0.48); x.bezierCurveTo(-w*0.36,-h*0.26,-w*0.38,h*0.04,-w*0.36,h*0.22); x.bezierCurveTo(-w*0.4,h*0.28,-w*0.48,h*0.28,-w*0.5,h*0.26); x.fillStyle='rgba(0,0,0,0.28)'; x.fill();
-      x.beginPath(); x.moveTo(w*0.2,-h*0.58); x.bezierCurveTo(w*0.38,-h*0.38,w*0.56,-h*0.1,w*0.5,h*0.26); x.bezierCurveTo(w*0.4,h*0.18,w*0.32,-h*0.06,w*0.18,-h*0.46); x.closePath(); x.fillStyle='rgba(0,0,0,0.2)'; x.fill();
-      x.beginPath(); x.moveTo(-w*0.2,-h*0.52); x.bezierCurveTo(w*0.0,-h*0.66,w*0.2,-h*0.58,w*0.3,-h*0.38); x.bezierCurveTo(w*0.08,-h*0.42,-w*0.04,-h*0.46,-w*0.2,-h*0.52); x.fillStyle=c.tongue; x.globalAlpha=0.8; x.fill(); x.globalAlpha=1;
-      x.beginPath(); x.moveTo(-w*0.22,-h*0.18); x.bezierCurveTo(-w*0.26,-h*0.52,-w*0.1,-h*0.6,-w*0.01,-h*0.56); x.bezierCurveTo(w*0.04,-h*0.54,w*0.0,-h*0.2,-w*0.04,-h*0.16); x.fillStyle=c.tongue; x.fill();
-      x.beginPath(); x.moveTo(-w*0.5,h*0.06); x.bezierCurveTo(-w*0.6,h*0.0,-w*0.58,-h*0.1,-w*0.46,-h*0.08); x.bezierCurveTo(-w*0.48,-h*0.02,-w*0.5,h*0.04,-w*0.5,h*0.06); x.fillStyle='#0a3566'; x.fill();
-      x.beginPath(); x.moveTo(-w*0.5,h*0.26); x.bezierCurveTo(-w*0.08,h*0.44,w*0.08,h*0.46,w*0.5,h*0.26); x.strokeStyle='rgba(255,255,255,0.2)'; x.lineWidth=w*0.012; x.setLineDash([w*0.03,w*0.02]); x.stroke(); x.setLineDash([]);
+    // Ajustar tamaño al viewport
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
     }
+    window.onresize = resize;
+    resize();
 
-  } else if (shoe === 'boot') {
-    if (view === 'top') {
-      x.translate(oc.width/2, oc.height/2);
-      const w=size, h=size*0.38;
-      x.beginPath(); x.ellipse(0,h*0.4,w*1.02,h*0.5,0,0,Math.PI*2); x.fillStyle='#0a0a08'; x.fill();
-      x.beginPath(); x.roundRect(-w,-h*0.5,w*2,h*1.1,8); x.fillStyle=c.body; x.fill();
-      x.beginPath(); x.moveTo(-w,0); x.bezierCurveTo(-w,h*0.5,-w*0.5,h*0.7,-w*0.2,h*0.6); x.bezierCurveTo(-w*0.6,h*0.4,-w*0.9,h*0.1,-w,0); x.fillStyle='rgba(0,0,0,0.25)'; x.fill();
-      for(let i=0;i<3;i++){x.beginPath();x.moveTo(-w*0.6,-h*0.2+i*h*0.3);x.lineTo(w*0.6,-h*0.2+i*h*0.3);x.strokeStyle=c.lace;x.lineWidth=w*0.03;x.stroke();}
-    } else if (view === 'front') {
-      x.translate(oc.width/2, oc.height*0.62);
-      const w=size*0.62, h=size*1.1;
-      x.beginPath(); x.moveTo(-w*0.9,h*0.28); x.bezierCurveTo(-w,h*0.5,w,h*0.5,w*0.9,h*0.28); x.fillStyle='#0a0a08'; x.fill();
-      x.beginPath(); x.roundRect(-w*0.9,-h*1.0,w*1.8,h*1.28,8); x.fillStyle=c.body; x.fill();
-      x.beginPath(); x.moveTo(w*0.3,-h*0.9); x.bezierCurveTo(w*0.8,-h*0.5,w*0.88,h*0.1,w*0.72,h*0.2); x.bezierCurveTo(w*0.7,-h*0.0,w*0.6,-h*0.5,w*0.3,-h*0.9); x.fillStyle='rgba(0,0,0,0.2)'; x.fill();
-      for(let i=0;i<5;i++){x.beginPath();x.moveTo(-w*0.6,-h*0.7+i*h*0.2);x.lineTo(w*0.6,-h*0.7+i*h*0.2);x.strokeStyle=c.lace;x.lineWidth=w*0.05;x.lineCap='round';x.stroke();}
-    } else {
-      x.translate(oc.width/2, oc.height*0.58);
-      const w=size*1.3, h=size*0.9;
-      x.beginPath(); x.moveTo(-w*0.5,h*0.42); x.bezierCurveTo(-w*0.56,h*0.62,-w*0.3,h*0.72,w*0.08,h*0.7); x.bezierCurveTo(w*0.38,h*0.68,w*0.56,h*0.56,w*0.52,h*0.4); x.lineTo(w*0.5,h*0.3); x.bezierCurveTo(w*0.3,h*0.52,w*0.08,h*0.56,-w*0.08,h*0.54); x.bezierCurveTo(-w*0.34,h*0.52,-w*0.5,h*0.42,-w*0.5,h*0.3); x.closePath(); x.fillStyle='#0a0a08'; x.fill();
-      x.beginPath(); x.moveTo(-w*0.5,h*0.26); x.bezierCurveTo(-w*0.54,-h*0.06,-w*0.4,-h*1.0,-w*0.18,-h*1.1); x.lineTo(w*0.22,-h*1.1); x.bezierCurveTo(w*0.4,-h*1.0,w*0.52,-h*0.06,w*0.5,h*0.26); x.bezierCurveTo(w*0.3,h*0.44,w*0.08,h*0.48,-w*0.08,h*0.46); x.bezierCurveTo(-w*0.34,h*0.44,-w*0.5,h*0.32,-w*0.5,h*0.26); x.fillStyle=c.body; x.fill();
-      x.beginPath(); x.moveTo(-w*0.5,h*0.26); x.bezierCurveTo(-w*0.54,-h*0.06,-w*0.44,-h*0.8,-w*0.28,-h*1.0); x.bezierCurveTo(-w*0.36,-h*0.7,-w*0.38,h*0.04,-w*0.36,h*0.22); x.bezierCurveTo(-w*0.4,h*0.28,-w*0.48,h*0.28,-w*0.5,h*0.26); x.fillStyle='rgba(0,0,0,0.3)'; x.fill();
-      for(let i=0;i<5;i++){x.beginPath();x.moveTo(-w*0.08,-h*0.1-i*h*0.18);x.lineTo(w*0.16,-h*0.12-i*h*0.17);x.strokeStyle=c.lace;x.lineWidth=w*0.018;x.stroke();}
-    }
+    // Imagen de zapato embebida en base64 (PNG con fondo transparente)
+    const shoeImg = new Image();
+    shoeImg.src =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIA..."; // aquí iría el PNG codificado
 
-  } else if (shoe === 'loafer') {
-    if (view === 'top') {
-      x.translate(oc.width/2, oc.height/2);
-      const w=size, h=size*0.35;
-      x.beginPath(); x.ellipse(0,h*0.45,w*1.02,h*0.55,0,0,Math.PI*2); x.fillStyle=c.sole; x.fill();
-      x.beginPath(); x.moveTo(-w,h*0.1); x.bezierCurveTo(-w,-h*0.8,w,-h*0.8,w,h*0.1); x.bezierCurveTo(w,h*0.6,-w,h*0.6,-w,h*0.1); x.fillStyle=c.body; x.fill();
-      x.beginPath(); x.moveTo(-w,0); x.bezierCurveTo(-w,h*0.4,-w*0.5,h*0.6,-w*0.2,h*0.5); x.bezierCurveTo(-w*0.6,h*0.3,-w*0.9,h*0.05,-w,0); x.fillStyle='rgba(0,0,0,0.2)'; x.fill();
-      x.beginPath(); x.moveTo(-w*0.2,-h*0.2); x.quadraticCurveTo(0,-h*0.8,w*0.2,-h*0.2); x.strokeStyle=c.lace; x.lineWidth=w*0.05; x.stroke();
-    } else if (view === 'front') {
-      x.translate(oc.width/2, oc.height*0.62);
-      const w=size*0.62, h=size*1.0;
-      x.beginPath(); x.moveTo(-w*0.9,h*0.25); x.bezierCurveTo(-w,h*0.5,w,h*0.5,w*0.9,h*0.25); x.fillStyle=c.sole; x.fill();
-      x.beginPath(); x.moveTo(-w*0.9,h*0.22); x.bezierCurveTo(-w,-h*0.1,-w*0.5,-h*0.72,0,-h*0.75); x.bezierCurveTo(w*0.5,-h*0.72,w,-h*0.1,w*0.9,h*0.22); x.closePath(); x.fillStyle=c.body; x.fill();
-      x.beginPath(); x.moveTo(w*0.32,-h*0.62); x.bezierCurveTo(w*0.85,-h*0.05,w*0.88,h*0.2,w*0.72,h*0.18); x.bezierCurveTo(w*0.7,-h*0.0,w*0.56,-h*0.52,w*0.32,-h*0.62); x.fillStyle='rgba(0,0,0,0.18)'; x.fill();
-      x.beginPath(); x.moveTo(-w*0.22,-h*0.1); x.quadraticCurveTo(0,-h*0.5,w*0.22,-h*0.1); x.strokeStyle=c.lace; x.lineWidth=w*0.07; x.lineCap='round'; x.stroke();
-    } else {
-      x.translate(oc.width/2, oc.height*0.58);
-      const w=size*1.3, h=size*0.85;
-      x.beginPath(); x.moveTo(-w*0.5,h*0.38); x.bezierCurveTo(-w*0.54,h*0.58,-w*0.3,h*0.68,w*0.08,h*0.66); x.bezierCurveTo(w*0.38,h*0.64,w*0.54,h*0.52,w*0.5,h*0.36); x.lineTo(w*0.48,h*0.26); x.bezierCurveTo(w*0.28,h*0.48,w*0.06,h*0.52,-w*0.1,h*0.5); x.bezierCurveTo(-w*0.34,h*0.48,-w*0.5,h*0.38,-w*0.5,h*0.28); x.closePath(); x.fillStyle=c.sole; x.fill();
-      x.beginPath(); x.moveTo(-w*0.5,h*0.24); x.bezierCurveTo(-w*0.52,-h*0.08,-w*0.2,-h*0.52,w*0.1,-h*0.56); x.bezierCurveTo(w*0.36,-h*0.52,w*0.52,-h*0.1,w*0.5,h*0.24); x.bezierCurveTo(w*0.28,h*0.42,w*0.06,h*0.46,-w*0.1,h*0.44); x.bezierCurveTo(-w*0.34,h*0.42,-w*0.5,h*0.3,-w*0.5,h*0.24); x.fillStyle=c.body; x.fill();
-      x.beginPath(); x.moveTo(-w*0.5,h*0.24); x.bezierCurveTo(-w*0.52,-h*0.08,-w*0.4,-h*0.38,-w*0.24,-h*0.48); x.bezierCurveTo(-w*0.34,-h*0.28,-w*0.36,h*0.02,-w*0.34,h*0.18); x.bezierCurveTo(-w*0.4,h*0.24,-w*0.48,h*0.24,-w*0.5,h*0.24); x.fillStyle='rgba(0,0,0,0.22)'; x.fill();
-      x.beginPath(); x.moveTo(-w*0.06,-h*0.14); x.quadraticCurveTo(w*0.12,-h*0.44,w*0.24,-h*0.14); x.strokeStyle=c.lace; x.lineWidth=w*0.038; x.stroke();
-    }
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    });
 
-  } else if (shoe === 'heel') {
-    if (view === 'top') {
-      x.translate(oc.width/2, oc.height/2);
-      const w=size, h=size*0.35;
-      x.beginPath(); x.ellipse(0,h*0.4,w*1.0,h*0.5,0,0,Math.PI*2); x.fillStyle=c.sole; x.fill();
-      x.beginPath(); x.moveTo(-w,h*0.1); x.bezierCurveTo(-w,-h*0.7,w*0.7,-h*0.8,w,h*0.1); x.bezierCurveTo(w,h*0.5,-w,h*0.5,-w,h*0.1); x.fillStyle=c.body; x.fill();
-      x.beginPath(); x.ellipse(0,-h*0.65,w*0.15,h*0.12,0,0,Math.PI*2); x.fillStyle=c.sole; x.fill();
-    } else if (view === 'front') {
-      x.translate(oc.width/2, oc.height*0.65);
-      const w=size*0.58, h=size*1.05;
-      x.beginPath(); x.ellipse(0,h*0.42,w*0.55,h*0.16,0,0,Math.PI*2); x.fillStyle=c.sole; x.fill();
-      x.beginPath(); x.ellipse(0,h*0.55,w*0.2,h*0.22,0,0,Math.PI*2); x.fillStyle=c.sole; x.fill();
-      x.beginPath(); x.moveTo(-w*0.88,h*0.38); x.bezierCurveTo(-w,-h*0.05,-w*0.55,-h*0.72,0,-h*0.75); x.bezierCurveTo(w*0.55,-h*0.72,w,-h*0.05,w*0.88,h*0.38); x.closePath(); x.fillStyle=c.body; x.fill();
-      x.beginPath(); x.moveTo(w*0.3,-h*0.62); x.bezierCurveTo(w*0.82,-h*0.0,w*0.86,h*0.3,w*0.7,h*0.3); x.bezierCurveTo(w*0.68,-h*0.02,w*0.52,-h*0.52,w*0.3,-h*0.62); x.fillStyle='rgba(0,0,0,0.18)'; x.fill();
-    } else {
-      x.translate(oc.width/2, oc.height*0.58);
-      const w=size*1.3, h=size*0.85;
-      x.beginPath(); x.ellipse(-w*0.06,h*0.46,w*0.44,h*0.14,0,0,Math.PI*2); x.fillStyle=c.sole; x.fill();
-      x.beginPath(); x.moveTo(w*0.22,h*0.2); x.lineTo(w*0.36,h*0.72); x.lineTo(w*0.46,h*0.72); x.lineTo(w*0.38,h*0.2); x.fillStyle=c.sole; x.fill();
-      x.beginPath(); x.moveTo(-w*0.46,h*0.18); x.bezierCurveTo(-w*0.5,-h*0.2,-w*0.08,-h*0.58,w*0.28,-h*0.5); x.bezierCurveTo(w*0.54,-h*0.32,w*0.5,h*0.12,w*0.44,h*0.18); x.bezierCurveTo(w*0.28,h*0.34,-w*0.28,h*0.34,-w*0.46,h*0.18); x.fillStyle=c.body; x.fill();
-      x.beginPath(); x.moveTo(-w*0.46,h*0.18); x.bezierCurveTo(-w*0.5,-h*0.2,-w*0.36,-h*0.46,-w*0.18,-h*0.5); x.bezierCurveTo(-w*0.28,-h*0.28,-w*0.3,h*0.06,-w*0.28,h*0.14); x.bezierCurveTo(-w*0.36,h*0.18,-w*0.44,h*0.18,-w*0.46,h*0.18); x.fillStyle='rgba(0,0,0,0.25)'; x.fill();
-      x.beginPath(); x.moveTo(w*0.22,h*0.18); x.bezierCurveTo(w*0.52,-h*0.06,w*0.52,h*0.1,w*0.44,h*0.18); x.bezierCurveTo(w*0.4,h*0.06,w*0.36,-h*0.06,w*0.22,h*0.18); x.fillStyle='rgba(0,0,0,0.2)'; x.fill();
-    }
-  }
-  return oc;
-}
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
 
-// ── Dibujado en canvas principal ──
-function drawShoe(cx, cy, angle, width, shoe, flip, tilt) {
-  if (width < 10) return;
-  const view = getView(tilt);
-  const size = Math.max(Math.round(width * 0.85), 20);
-  const oc = getShoeCanvas(shoe, view, size);
-  if (!oc || oc.width < 4 || oc.height < 4) return;
+    pose.onResults((results) => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
-  ctx.save();
-  ctx.translate(cx, cy);
-  if (view === 'top') {
-    ctx.rotate(angle);
-    if (flip) ctx.scale(-1, 1);
-  } else if (view === 'side') {
-    if (!flip) ctx.scale(-1, 1);
-  }
-  ctx.scale(userScale, userScale);
-  ctx.shadowColor = 'rgba(0,0,0,0.3)';
-  ctx.shadowBlur  = width * 0.06;
-  ctx.shadowOffsetY = width * 0.04;
-  ctx.drawImage(oc, -oc.width/2, -oc.height/2);
-  ctx.restore();
-}
+      const lm = results.poseLandmarks;
+      if (!lm) return;
 
-// ── Keypoints ──
-function getKp(kps, name) { return kps.find(k => k.name === name); }
+      // Pie izquierdo
+      const heel = lm[29];
+      const index = lm[31];
 
-function drawFoot(heel, toe, ankle, knee, side, flip, H) {
-  if (!heel || !toe) return false;
-  if ((heel.score??0) < 0.25 && (toe.score??0) < 0.25) return false;
+      const cx = (heel.x + index.x) / 2 * canvas.width;
+      const cy = (heel.y + index.y) / 2 * canvas.height;
+      const angle = Math.atan2(index.y - heel.y, index.x - heel.x);
 
-  const hx=heel.x, hy=heel.y, tx=toe.x, ty=toe.y;
-  const midX=(hx+tx)/2;
-  const dx=tx-hx, dy=ty-hy;
-  const angle=Math.atan2(dy,dx);
-  const footLen=Math.sqrt(dx*dx+dy*dy);
-  const width=Math.max(footLen*1.2, 50);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.drawImage(shoeImg, -50, -50, 100, 100); // tamaño ajustable
+      ctx.restore();
+    });
 
-  let tilt=0.4;
-  if (ankle && knee && (ankle.score??0)>0.25 && (knee.score??0)>0.25) {
-    const legDy=Math.abs(ankle.y-knee.y), legDx=Math.abs(ankle.x-knee.x);
-    tilt=Math.max(0, Math.min(1, legDy/(legDx+legDy+0.001)));
-  } else {
-    const absAngle=Math.abs(angle), norm=Math.min(absAngle, Math.PI-absAngle);
-    tilt=Math.max(0.15, Math.min(0.85, norm/(Math.PI/2)));
-  }
-
-  const candidates=[heel,toe];
-  if (ankle && (ankle.score??0)>0.2) candidates.push(ankle);
-  const bottomY=Math.max(...candidates.map(k=>k.y));
-  const cx=midX;
-  const cy=bottomY - width * lerp(0.28, 0.18, tilt);
-
-  const s=smoothFoot(side, cx, cy, angle, width, tilt);
-  drawShoe(s.cx, s.cy, s.angle, s.w, currentShoe, flip, s.tilt);
-  return true;
-}
-
-// ── Detection loop ──
-async function detectionLoop() {
-  if (!running || !detector) return;
-  canvas.width  = video.videoWidth  || 640;
-  canvas.height = video.videoHeight || 480;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  try {
-    const poses = await detector.estimatePoses(video, { flipHorizontal: false });
-    if (poses && poses.length > 0) {
-      const kps=poses[0].keypoints, H=canvas.height;
-      let detected=0;
-      if(drawFoot(getKp(kps,'left_heel'),getKp(kps,'left_foot_index'),getKp(kps,'left_ankle'),getKp(kps,'left_knee'),'left',false,H)) detected++;
-      if(drawFoot(getKp(kps,'right_heel'),getKp(kps,'right_foot_index'),getKp(kps,'right_ankle'),getKp(kps,'right_knee'),'right',true,H)) detected++;
-      statusEl.textContent = detected>0
-        ? `${detected} pie${detected>1?'s':''} detectado${detected>1?'s':''} — ${COLORS[currentShoe].label}`
-        : 'Mostrá los pies a la cámara';
-    } else {
-      statusEl.textContent='No se detectó ninguna persona.';
-    }
-  } catch(e) {
-    statusEl.textContent='Error: '+e.message;
-  }
-  requestAnimationFrame(detectionLoop);
-}
-
-// ── Cámara ──
-async function startStream(facing) {
-  if(currentStream){currentStream.getTracks().forEach(t=>t.stop());currentStream=null;}
-  smoothed.left={cx:null,cy:null,angle:null,w:null,tilt:null};
-  smoothed.right={cx:null,cy:null,angle:null,w:null,tilt:null};
-  let stream;
-  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{exact:facing},width:{ideal:1280},height:{ideal:720}},audio:false});}
-  catch(e){stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing}},audio:false});}
-  currentStream=stream; video.srcObject=stream;
-  await new Promise(r=>{video.onloadedmetadata=r;});
-  await video.play();
-}
-
-flipBtn.addEventListener('click',async()=>{
-  flipBtn.disabled=true;
-  facingMode=facingMode==='environment'?'user':'environment';
-  statusEl.textContent=facingMode==='environment'?'Cambiando a cámara trasera...':'Cambiando a cámara frontal...';
-  try{await startStream(facingMode); statusEl.textContent=facingMode==='environment'?'📷 Cámara trasera':'🤳 Cámara frontal';}
-  catch(e){statusEl.textContent='No se pudo cambiar: '+e.message; facingMode=facingMode==='environment'?'user':'environment';}
-  flipBtn.disabled=false;
-});
-
-startBtn.addEventListener('click',async()=>{
-  if(cameraStarted) return;
-  cameraStarted=true; startBtn.disabled=true; startBtn.textContent='Iniciando...';
-  statusEl.textContent='Solicitando acceso a la cámara...';
-  try{
-    await startStream(facingMode);
-    statusEl.textContent='Cargando modelo...';
-    await tf.ready();
-    detector=await poseDetection.createDetector(
-      poseDetection.SupportedModels.BlazePose,
-      {runtime:'tfjs', modelType:'full', enableSmoothing:true}
-    );
-    startBtn.style.display='none'; flipBtn.style.display='block';
-    statusEl.textContent='📷 Cámara activa — mostrá los pies';
-    running=true; detectionLoop();
-  }catch(e){
-    statusEl.textContent='Error: '+e.message;
-    startBtn.disabled=false; startBtn.textContent='Reintentar'; cameraStarted=false;
-  }
-});
-</script>
+    const camera = new Camera(video, {
+      onFrame: async () => { await pose.send({ image: video }); },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+  </script>
 </body>
 </html>
