@@ -146,23 +146,6 @@ function drawShoe(x,y,angle,size,color,flip){
 
   ctx.restore();
 }
-  ctx.save();
-  ctx.translate(x,y);
-  ctx.rotate(angle);
-  if(flip) ctx.scale(-1,1);
-
-  ctx.fillStyle=color;
-  ctx.beginPath();
-  ctx.ellipse(0,0,size*0.5,size*0.22,0,0,Math.PI*2);
-  ctx.fill();
-
-  ctx.fillStyle="rgba(0,0,0,.25)";
-  ctx.beginPath();
-  ctx.ellipse(0,size*0.12,size*0.52,size*0.08,0,0,Math.PI*2);
-  ctx.fill();
-
-  ctx.restore();
-}
 
 function onResults(results){
   canvas.width=video.videoWidth;
