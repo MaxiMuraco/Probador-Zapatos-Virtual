@@ -57,6 +57,7 @@ function drawShoe(x,y,angle,size,color,flip){
 
   if(flip){
     ctx.scale(-1,1);
+    ctx.rotate(Math.PI);
   }
 
   const w = size * 1.35;
@@ -220,11 +221,11 @@ function onResults(results){
   drawShoe(
     x,
     y,
-    flip ? angle : angle + Math.PI,
+    angle,
     size,
     shoeColor,
     flip
-);
+  );
   }
 
   foot(lm[29],lm[31],false);
