@@ -2,86 +2,44 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Filtro Try-On Zapatos</title>
+  <title>Test Cámara</title>
   <style>
     body { margin: 0; overflow: hidden; }
     video, canvas { position: absolute; top: 0; left: 0; }
-    canvas { pointer-events: none; }
-    #sizeControl {
-      position: fixed;
-      bottom: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(255,255,255,0.8);
-      padding: 5px;
-      border-radius: 8px;
-    }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
 </head>
 <body>
   <video id="video" autoplay playsinline></video>
   <canvas id="canvas"></canvas>
-  <input id="sizeControl" type="range" min="50" max="200" value="100">
 
   <script>
     const video = document.getElementById("video");
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
-    const sizeControl = document.getElementById("sizeControl");
 
-    function resize() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    }
-    window.onresize = resize;
-    resize();
+    async function initCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" } // cámara trasera
+        });
+        video.srcObject = stream;
 
-    const shoeImg = new Image();
-    shoeImg.src = "https://i.imgur.com/0Z8FQ.png"; // zapato PNG transparente
-
-    const pose = new Pose.Pose({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-    });
-
-    pose.setOptions({
-      modelComplexity: 1,
-      smoothLandmarks: true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
-
-    pose.onResults((results) => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-
-      const lm = results.poseLandmarks;
-      if (!lm) return;
-
-      drawShoe(lm[29], lm[31]); // pie izquierdo
-      drawShoe(lm[30], lm[32]); // pie derecho
-    });
-
-    function drawShoe(heel, index) {
-      const cx = (heel.x + index.x) / 2 * canvas.width;
-      const cy = (heel.y + index.y) / 2 * canvas.height;
-      const angle = Math.atan2(index.y - heel.y, index.x - heel.x);
-      const size = parseInt(sizeControl.value);
-
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(angle);
-      ctx.drawImage(shoeImg, -size/2, -size/2, size, size);
-      ctx.restore();
+        video.onloadedmetadata = () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          draw();
+        };
+      } catch (err) {
+        alert("Error al acceder a la cámara: " + err);
+      }
     }
 
-    const camera = new Camera.Camera(video, {
-      onFrame: async () => { await pose.send({ image: video }); },
-      width: 640,
-      height: 480
-    });
-    camera.start();
+    function draw() {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      requestAnimationFrame(draw);
+    }
+
+    initCamera();
   </script>
 </body>
 </html>
