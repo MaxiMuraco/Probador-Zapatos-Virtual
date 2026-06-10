@@ -218,11 +218,18 @@ function onResults(results){
     ctx.arc(tx,ty,4,0,Math.PI*2);
     ctx.fill();
 
-    drawShoe(x,y,angle,size,shoeColor,flip);
+    drawShoe(
+      x,
+      y,
+      flip ? angle : angle + Math.PI,
+      size,
+      shoeColor,
+      flip
+    );
   }
 
-  foot(lm[29],lm[31],true);
-  foot(lm[30],lm[32],false);
+  foot(lm[29],lm[31],false);
+  foot(lm[30],lm[32],true);
 }
 
 async function loop(){
