@@ -55,7 +55,13 @@ function drawShoe(x,y,angle,size,color,flip){
   ctx.translate(x,y);
   ctx.rotate(angle);
 
-  if(false) ctx.scale(-1,1);
+  if(flip){
+  ctx.scale(-1,1);
+
+  ctx.fillStyle="red";
+}else{
+  ctx.fillStyle="green";
+}
 
   const w = size * 1.2;
   const h = w * 0.45;
