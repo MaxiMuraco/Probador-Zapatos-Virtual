@@ -2,26 +2,40 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Prototipo Try-On Zapatos</title>
+  <title>Filtro Try-On Zapatos</title>
   <style>
     body { margin: 0; overflow: hidden; }
     video, canvas { position: absolute; top: 0; left: 0; }
     canvas { pointer-events: none; }
+    #controls {
+      position: fixed;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255,255,255,0.8);
+      padding: 10px;
+      border-radius: 8px;
+    }
   </style>
+  <!-- Librerías MediaPipe -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 </head>
 <body>
   <video id="video" autoplay playsinline></video>
   <canvas id="canvas"></canvas>
 
-  <script type="module">
-    import { Pose } from "https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js";
-    import { Camera } from "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js";
+  <div id="controls">
+    <label>Tamaño zapato:</label>
+    <input type="range" id="scale" min="50" max="200" value="100">
+  </div>
 
+  <script>
     const video = document.getElementById("video");
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
+    const scaleInput = document.getElementById("scale");
 
-    // Ajustar tamaño al viewport
     function resize() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -29,12 +43,11 @@
     window.onresize = resize;
     resize();
 
-    // Imagen de zapato embebida en base64 (PNG con fondo transparente)
+    // Imagen de zapato (ejemplo PNG transparente)
     const shoeImg = new Image();
-    shoeImg.src =
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIA..."; // aquí iría el PNG codificado
+    shoeImg.src = "https://i.imgur.com/0Z8FQ.png"; // reemplazá con tu PNG
 
-    const pose = new Pose({
+    const pose = new Pose.Pose({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
     });
 
@@ -53,21 +66,26 @@
       if (!lm) return;
 
       // Pie izquierdo
-      const heel = lm[29];
-      const index = lm[31];
+      drawShoe(lm[29], lm[31]);
+      // Pie derecho
+      drawShoe(lm[30], lm[32]);
+    });
 
+    function drawShoe(heel, index) {
       const cx = (heel.x + index.x) / 2 * canvas.width;
       const cy = (heel.y + index.y) / 2 * canvas.height;
       const angle = Math.atan2(index.y - heel.y, index.x - heel.x);
 
+      const size = parseInt(scaleInput.value);
+
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(angle);
-      ctx.drawImage(shoeImg, -50, -50, 100, 100); // tamaño ajustable
+      ctx.drawImage(shoeImg, -size/2, -size/2, size, size);
       ctx.restore();
-    });
+    }
 
-    const camera = new Camera(video, {
+    const camera = new Camera.Camera(video, {
       onFrame: async () => { await pose.send({ image: video }); },
       width: 640,
       height: 480
